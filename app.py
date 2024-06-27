@@ -1,6 +1,14 @@
+import subprocess
+import sys
+
+# 确保安装 xgboost 库
+try:
+    import xgboost as xgb
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "xgboost"])
+    import xgboost as xgb
 import pandas as pd
 import numpy as np
-import xgboost as xgb
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
@@ -13,6 +21,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import SelectKBest, f_classif
 import shap
 import streamlit as st
+
+
 
 # Load the data
 @st.cache_data
