@@ -14,20 +14,18 @@ from sklearn.feature_selection import SelectKBest, f_classif
 import shap
 import streamlit as st
 
-
-
 # Load the data
 @st.cache_data
 def load_data():
     data = pd.read_csv("python.csv")
+    # Rename the specified columns
+    data = data.rename(columns={
+        'Wide.erythrocyte.volume.distribution': 'Red.blood.cell.distribution.width',
+        'X25.Hydroxyvitamin.D': '25.Hydroxy.vitamin.D'
+    })
     return data
 
 data = load_data()
-# Rename the specified columns
-data = data.rename(columns={
-    'Wide.erythrocyte.volume.distribution': 'Red.blood.cell.distribution.width',
-    'X25.Hydroxyvitamin.D': '25.Hydroxy.vitamin.D'
-})
 
 # Ensure 'Group' is the target column
 target_column = 'Group'
@@ -54,12 +52,15 @@ X_test_selected = selector.transform(preprocessor.transform(X_test))
 selected_features = X.columns[selector.get_support()]
 
 # Retrain XGBoost model
-model = xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss', seed=121)
-model.fit(X_train_selected, y_train)
+@st.cache_data
+def train_model(X_train_selected, y_train):
+    model = xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss', seed=121)
+    model.fit(X_train_selected, y_train)
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_train_selected)
+    return model, explainer, shap_values
 
-# SHAP values for interpretation
-explainer = shap.TreeExplainer(model)
-shap_values = explainer.shap_values(X_train_selected)
+model, explainer, shap_values = train_model(X_train_selected, y_train)
 
 # Streamlit web app
 st.title("Predictive Model for ADHD Risk Assessment")
@@ -93,7 +94,6 @@ if st.button("Predict"):
     # Compute SHAP values for the input
     input_shap_values = explainer.shap_values(input_processed)
 
-
     # Plot SHAP force plot
-    force_plot_html = shap.plots.force(explainer.expected_value, input_shap_values[0], input_processed[0], feature_names=selected_features, show=False, matplotlib=True)
-    st.pyplot(force_plot_html)
+    st_shap = st._legacy_shap
+    st_shap.force_plot(explainer.expected_value, input_shap_values[0], input_processed[0], feature_names=selected_features, matplotlib=True)
