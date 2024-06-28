@@ -1,6 +1,5 @@
 import pandas as pd
 import xgboost as xgb
-from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.feature_selection import SelectKBest, f_classif
@@ -8,41 +7,45 @@ import shap
 import streamlit as st
 
 @st.cache_data
-def load_data():
+def load_and_preprocess_data():
     data = pd.read_csv("python.csv")
     data = data.rename(columns={
         'Wide.erythrocyte.volume.distribution': 'Red.blood.cell.distribution.width',
         'X25.Hydroxyvitamin.D': '25.Hydroxy.vitamin.D'
     })
-    return data
+    
+    target_column = 'Group'
+    data[target_column] = data[target_column].astype('category')
+    
+    X = data.drop(columns=target_column)
+    y = data[target_column]
+    
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', SimpleImputer(strategy='median'), X.columns)
+        ]
+    )
+    
+    X_processed = preprocessor.fit_transform(X)
+    
+    selector = SelectKBest(f_classif, k=8)
+    X_selected = selector.fit_transform(X_processed, y)
+    selected_features = X.columns[selector.get_support()]
+    
+    return X_selected, y, selected_features, preprocessor, selector
 
-data = load_data()
-
-target_column = 'Group'
-data[target_column] = data[target_column].astype('category')
-
-X = data.drop(columns=target_column)
-y = data[target_column]
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', SimpleImputer(strategy='median'), X.columns)
-    ]
-)
-
-selector = SelectKBest(f_classif, k=8)
-X_selected = selector.fit_transform(preprocessor.fit_transform(X), y)
-selected_features = X.columns[selector.get_support()]
-
-@st.cache_data
-def train_model(X_selected, y):
+@st.cache_resource
+def train_model_and_explainer(X_selected, y):
     model = xgb.XGBClassifier(use_label_encoder=False, eval_metric='logloss', seed=121)
     model.fit(X_selected, y)
     explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_selected)
-    return model, explainer, shap_values
+    return model, explainer
 
-model, explainer, shap_values = train_model(X_selected, y)
+# Load and preprocess data
+X_selected, y, selected_features, preprocessor, selector = load_and_preprocess_data()
+
+# Train model and create explainer
+model, explainer = train_model_and_explainer(X_selected, y)
 
 st.title("Predictive Model for ADHD Risk Assessment")
 
@@ -53,15 +56,11 @@ for feature in selected_features:
 if st.button("Predict"):
     input_df = pd.DataFrame([inputs])
     
-    missing_cols = set(X.columns) - set(input_df.columns)
+    missing_cols = set(preprocessor.feature_names_in_) - set(input_df.columns)
     for col in missing_cols:
         input_df[col] = 0
 
-    try:
-        input_processed = selector.transform(preprocessor.transform(input_df))
-    except ValueError as e:
-        st.error(f"Error in preprocessing: {e}")
-        st.stop()
+    input_processed = selector.transform(preprocessor.transform(input_df))
 
     prediction_proba = model.predict_proba(input_processed)[:, 1][0]
     st.markdown(f"**<p style='font-weight:bold; color:black;'>Based on feature values, predicted possibility of ADHD is: {prediction_proba:.2%}</p>**", unsafe_allow_html=True)
