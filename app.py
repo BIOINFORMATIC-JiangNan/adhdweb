@@ -67,6 +67,5 @@ if st.button("Predict"):
 
     input_shap_values = explainer.shap_values(input_processed)
 
-    shap.initjs()
-    force_plot = shap.force_plot(explainer.expected_value, input_shap_values[0], input_processed[0], feature_names=selected_features, matplotlib=True)
-    st.pyplot(force_plot)
+    force_plot_html = shap.plots.force(explainer.expected_value, input_shap_values[0], input_processed[0], feature_names=selected_features, show=False, matplotlib=True)
+    st.pyplot(force_plot_html)
